@@ -10,11 +10,11 @@ Token_Kind :: enum {
 	Null,
 	True, False,
 	Inf,
+	NegInf,
 	NaN,
 	Ident,
 	Newline,
-	Int,
-	Float,
+	Number,
 	Open_Paren, Close_Paren,
 	Open_Brace, Close_Brace,
 	Hash,
@@ -74,25 +74,7 @@ next_rune :: proc(t: ^Tokenizer) -> rune #no_bounds_check {
 }
 
 get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
-	skip_digits :: proc(t: ^Tokenizer) {
-		for t.offset < len(t.data) {
-			switch t.r {
-				case '0'..='9': next_rune(t)
-				case: return
-			}
-		}
-	}
-	
 	skip_multiline_comment :: proc(t: ^Tokenizer) {
-		if t.r != '/' {	
-			return
-		}
-
-		next_rune(t)
-		if t.r != '*' {
-			return
-		}
-
 		for t.offset < len(t.data) {
 			if is_newline(t.r) {
 				t.line += 1
@@ -110,10 +92,26 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 			next_rune(t)
 		}
 	}
+
+	skip_inline_comment :: proc(t: ^Tokenizer) {
+		for t.offset < len(t.data) {
+			if is_newline(t.r) {
+				t.pos.column = 1
+				return
+			}
+			next_rune(t)
+		}
+	}
 	
 	skip_whitespace :: proc(t: ^Tokenizer) {
 		loop: for t.offset < len(t.data) {
-			skip_multiline_comment(t)
+			if t.r == '/' {
+				next_rune(t)
+				switch t.r {
+					case '*': skip_multiline_comment(t)	
+					case '/': skip_inline_comment(t)
+				}
+			}
 
 			if is_newline(t.r) {
 				t.line += 1
@@ -126,18 +124,6 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 				next_rune(t)
 			} else {
 				break loop
-			}
-		}
-	}
-
-	skip_hex_digits :: proc(t: ^Tokenizer) {
-		for t.offset < len(t.data) {
-			next_rune(t)
-			switch t.r {
-			case '0'..='9', 'a'..='f', 'A'..='F':
-				// Okay
-			case:
-				return
 			}
 		}
 	}
@@ -177,9 +163,10 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 
 	scan_escape :: proc(t: ^Tokenizer) -> bool {
 		switch t.r {
-		case '"', '\'', '\\', '/', 'b', 'n', 'r', 't', 'f':
+		case '"', '\'', '/', 'b', 'n', 'r', 't', 'f':
 			next_rune(t)
 			return true
+
 		case 'u':
 			// Expect 4 hexadecimal digits
 			for i := 0; i < 4; i += 1 {
@@ -192,6 +179,15 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 				}
 			}
 			return true
+
+		case '\\':
+			for t.offset < len(t.data) {
+				if !is_whitespace(t.r) {
+					break
+				}
+			}
+			return true
+
 		case:
 			// Ignore the next rune regardless
 			next_rune(t)
@@ -212,7 +208,7 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 
 	// TODO add multiline strings
 	// TODO add raw strings
-	// TODO slashdash comments
+	// TODO add slashdash
 	block: switch curr_rune {
 	case utf8.RUNE_ERROR: err = .Illegal_Character
 	case utf8.RUNE_EOF:
@@ -240,9 +236,15 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 
 		if !unicode.is_digit(t.r) && !is_whitespace(t.r) {
 			skip_alphanum(t)
-			token.kind = .Quote
+			token.kind = .Ident
+		} else {
+			new_token, err := get_token(t)
+			token.kind = new_token.kind
 		}
 
+	case '+':
+		new_token, err := get_token(t)
+		token.kind = new_token.kind
 
 	case '"':
 		token.kind = .Quote
@@ -270,14 +272,8 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 		}
 	
 	case '0'..='9':
-		token.kind = .Int
-		skip_hex_digits(t)
-
-		if t.r == '.' {
-			token.kind = .Float
-			next_rune(t)
-		}
-		skip_digits(t)
+		token.kind = .Number
+		skip_alphanum(t)
 
 		str := string(t.data[token.offset:t.offset])
 		if !is_valid_number(str) {
@@ -286,26 +282,55 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 
 
 	case '\\': 
-		next_rune(t)
-		skip_whitespace(t)
+		for t.offset < len(t.data) {
+			if t.r == '/' {
+				next_rune(t)
+				switch t.r {
+					case '/': skip_inline_comment(t)
+					case '*': skip_multiline_comment(t)
+				}
+			}
 
-		// TODO handle ocmments
-		if !is_newline(t.r) {
-			return
+			skip_whitespace(t)
+
+			if is_newline(t.r) {
+				next_rune(t)
+				token, err = get_token(t)
+				return
+			}
 		}
 
-	case '#': token.kind = .Hash
 
-	case 0..=0xD7FF, 0xE000..=0x10FFFF:
-		token.kind = .Ident
-		skip_alphanum(t)
 
-		switch str := string(t.data[token.offset:t.offset]); str {
-			case "null": token.kind = .Null
+	case '#': 
+		new_token, err := get_token(t)
+		keyword := string(t.data[new_token.offset:t.offset])
+
+		// a keyword will always be invalid as an ident
+		if new_token.kind != .Invalid && !is_valid_ident(keyword) {
+			break block
+		}
+
+		switch keyword {
 			case "true": token.kind = .True
 			case "false": token.kind = .False
+			case "null": token.kind = .Null
 			case "inf": token.kind = .Inf
+			case "-inf": token.kind = .NegInf
 			case "nan": token.kind = .NaN
+		}
+
+	case 0..=0xD7FF, 0xE000..=0x10FFFF:
+		if curr_rune == '.' && unicode.is_digit(t.r) {
+			skip_alphanum(t)
+			break block
+		}
+
+		skip_alphanum(t)
+
+		ident := string(t.data[token.offset:t.offset])
+		if is_valid_ident(ident) {
+			token.kind = .Ident
 		}
 	}
 
@@ -313,8 +338,63 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 	return
 }
 
-// TODO
+is_valid_ident :: proc(str: string) -> bool {
+	switch str {
+		case "inf", "-inf", "nan", "true", "false", "null": return false
+		case: return true
+	}
+}
+
 is_valid_number :: proc(str: string) -> bool {
+	first_char, _ := utf8.decode_rune(str[0:])
+	if first_char != '-' && first_char != '+' && 
+		!unicode.is_digit(first_char) && first_char == '.'{
+		return false
+	}
+
+	is_valid_decimal :: proc(str: string) -> bool {
+		for n in str {
+			switch n {
+				case '0'..='9', '_', '.': // OK
+				case 'E', 'e', '+', '-': // OK
+				case: return false
+			}
+		}
+
+		return true
+	}
+
+	if len(str) == 1 {
+		return is_valid_decimal(str)
+	}
+
+	switch str[:2] {
+		case "0b":
+			for n in str[2:] {
+				if n != '0' && n != '1' && n != '_' {
+					return false
+				}
+			}
+
+		case "0o":
+			for n in str[2:] {
+				switch n {
+					case '0'..='7', '_': // OK
+					case: return false
+				}
+			}
+
+		case "0x":
+			for n in str[2:] {
+				switch n {
+					case '0'..='9', 'a'..='f', 'A'..='F', '_': // OK
+					case: return false
+				}
+			}
+
+		case: return is_valid_decimal(str[2:])
+	}
+
 	return true
 }
 

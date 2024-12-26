@@ -18,9 +18,12 @@ when KDL_DEBUG {
 		input :: `
 		test one
 
+		this fitson \
+			multiple lines
+
 		oneline_str "test test hehe"
 
-		something true
+		something true // just an inline comment
 
 		// here's a comment
 		true_true #true
@@ -36,7 +39,6 @@ when KDL_DEBUG {
 
 		command -> */ 
 		command here
-		
 		`
 
 		tokenizer := make_tokenizer(input)
