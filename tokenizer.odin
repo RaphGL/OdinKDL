@@ -1,22 +1,24 @@
 package kdl
 
-import "core:unicode/utf8"
 import "core:unicode"
+import "core:unicode/utf8"
 
 Token_Kind :: enum {
 	Invalid,
 	EOF,
-
 	Null,
-	True, False,
+	True,
+	False,
 	Inf,
 	NegInf,
 	NaN,
 	Ident,
 	Newline,
 	Number,
-	Open_Paren, Close_Paren,
-	Open_Brace, Close_Brace,
+	Open_Paren,
+	Close_Paren,
+	Open_Brace,
+	Close_Brace,
 	Hash,
 	Minus,
 	Quote,
@@ -25,28 +27,29 @@ Token_Kind :: enum {
 
 Pos :: struct {
 	offset: int,
-	line: int,
+	line:   int,
 	column: int,
 }
 
 Token :: struct {
 	using pos: Pos,
-	kind: Token_Kind,
-	text: string,
+	kind:      Token_Kind,
+	text:      string,
 }
 
 Tokenizer :: struct {
-	using pos: Pos,
-	data: string,
-	r: rune, // current rune
-	w: int, // current rune width in bytes
+	using pos:        Pos,
+	data:             string,
+	r:                rune, // current rune
+	w:                int, // current rune width in bytes
 	curr_line_offset: int,
-	spec: Specification,
+	spec:             Specification,
 }
 
 make_tokenizer :: proc(data: string, spec := DEFAULT_SPECIFICATION) -> Tokenizer {
+	test: int = "string"
 	t := Tokenizer {
-		pos = {line=1},
+		pos = {line = 1},
 		data = data,
 		spec = spec,
 	}
@@ -85,9 +88,9 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 			if t.r == '*' {
 				next_rune(t)
 				if t.r == '/' {
-					return	
-				}	
-			}			
+					return
+				}
+			}
 
 			next_rune(t)
 		}
@@ -102,14 +105,16 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 			next_rune(t)
 		}
 	}
-	
+
 	skip_whitespace :: proc(t: ^Tokenizer) {
 		loop: for t.offset < len(t.data) {
 			if t.r == '/' {
 				next_rune(t)
 				switch t.r {
-					case '*': skip_multiline_comment(t)	
-					case '/': skip_inline_comment(t)
+				case '*':
+					skip_multiline_comment(t)
+				case '/':
+					skip_inline_comment(t)
 				}
 			}
 
@@ -130,17 +135,15 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 
 	skip_alphanum :: proc(t: ^Tokenizer) {
 		for t.offset < len(t.data) {
-			if is_whitespace(t.r) || is_newline(t.r) {				
+			if is_whitespace(t.r) || is_newline(t.r) {
 				return
 			}
 
 			switch t.r {
-			case '(', ')', '{', '}', 
-				'[', ']', '\\', '/', 
-				'"', '#', ';', '=':
+			case '(', ')', '{', '}', '[', ']', '\\', '/', '"', '#', ';', '=':
 				return
 
-			case 0..=0xD7FF, 0xE000..=0x10FFFF:
+			case 0 ..= 0xD7FF, 0xE000 ..= 0x10FFFF:
 				next_rune(t)
 				continue
 			}
@@ -172,8 +175,8 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 			for i := 0; i < 4; i += 1 {
 				r := next_rune(t)
 				switch r {
-				case '0'..='9', 'a'..='f', 'A'..='F':
-					// Okay
+				case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F':
+				// Okay
 				case:
 					return false
 				}
@@ -210,7 +213,8 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 	// TODO add raw strings
 	// TODO add slashdash
 	block: switch curr_rune {
-	case utf8.RUNE_ERROR: err = .Illegal_Character
+	case utf8.RUNE_ERROR:
+		err = .Illegal_Character
 	case utf8.RUNE_EOF:
 		token.kind = .EOF
 		err = .EOF
@@ -219,11 +223,16 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 		skip_whitespace(t)
 		token.kind = .Newline
 
-	case '{': token.kind = .Open_Brace
-	case '}': token.kind = .Close_Brace
-	case '(': token.kind = .Open_Paren
-	case ')': token.kind = .Close_Paren
-	case '=': token.kind = .Equal
+	case '{':
+		token.kind = .Open_Brace
+	case '}':
+		token.kind = .Close_Brace
+	case '(':
+		token.kind = .Open_Paren
+	case ')':
+		token.kind = .Close_Paren
+	case '=':
+		token.kind = .Equal
 
 	case '/':
 		if t.r == '/' {
@@ -231,7 +240,7 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 		}
 		token, err = get_token(t)
 
-	case '-': 
+	case '-':
 		token.kind = .Minus
 
 		if !unicode.is_digit(t.r) && !is_whitespace(t.r) {
@@ -270,8 +279,8 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 		if !is_valid_string_literal(str) {
 			err = .Invalid_String
 		}
-	
-	case '0'..='9':
+
+	case '0' ..= '9':
 		token.kind = .Number
 		skip_alphanum(t)
 
@@ -281,13 +290,15 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 		}
 
 
-	case '\\': 
+	case '\\':
 		for t.offset < len(t.data) {
 			if t.r == '/' {
 				next_rune(t)
 				switch t.r {
-					case '/': skip_inline_comment(t)
-					case '*': skip_multiline_comment(t)
+				case '/':
+					skip_inline_comment(t)
+				case '*':
+					skip_multiline_comment(t)
 				}
 			}
 
@@ -301,8 +312,7 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 		}
 
 
-
-	case '#': 
+	case '#':
 		new_token, err := get_token(t)
 		keyword := string(t.data[new_token.offset:t.offset])
 
@@ -312,15 +322,21 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 		}
 
 		switch keyword {
-			case "true": token.kind = .True
-			case "false": token.kind = .False
-			case "null": token.kind = .Null
-			case "inf": token.kind = .Inf
-			case "-inf": token.kind = .NegInf
-			case "nan": token.kind = .NaN
+		case "true":
+			token.kind = .True
+		case "false":
+			token.kind = .False
+		case "null":
+			token.kind = .Null
+		case "inf":
+			token.kind = .Inf
+		case "-inf":
+			token.kind = .NegInf
+		case "nan":
+			token.kind = .NaN
 		}
 
-	case 0..=0xD7FF, 0xE000..=0x10FFFF:
+	case 0 ..= 0xD7FF, 0xE000 ..= 0x10FFFF:
 		if curr_rune == '.' && unicode.is_digit(t.r) {
 			skip_alphanum(t)
 			break block
@@ -340,24 +356,29 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 
 is_valid_ident :: proc(str: string) -> bool {
 	switch str {
-		case "inf", "-inf", "nan", "true", "false", "null": return false
-		case: return true
+	case "inf", "-inf", "nan", "true", "false", "null":
+		return false
+	case:
+		return true
 	}
 }
 
 is_valid_number :: proc(str: string) -> bool {
 	first_char, _ := utf8.decode_rune(str[0:])
-	if first_char != '-' && first_char != '+' && 
-		!unicode.is_digit(first_char) && first_char == '.'{
+	if first_char != '-' &&
+	   first_char != '+' &&
+	   !unicode.is_digit(first_char) &&
+	   first_char == '.' {
 		return false
 	}
 
 	is_valid_decimal :: proc(str: string) -> bool {
 		for n in str {
 			switch n {
-				case '0'..='9', '_', '.': // OK
-				case 'E', 'e', '+', '-': // OK
-				case: return false
+			case '0' ..= '9', '_', '.': // OK
+			case 'E', 'e', '+', '-': // OK
+			case:
+				return false
 			}
 		}
 
@@ -369,30 +390,33 @@ is_valid_number :: proc(str: string) -> bool {
 	}
 
 	switch str[:2] {
-		case "0b":
-			for n in str[2:] {
-				if n != '0' && n != '1' && n != '_' {
-					return false
-				}
+	case "0b":
+		for n in str[2:] {
+			if n != '0' && n != '1' && n != '_' {
+				return false
 			}
+		}
 
-		case "0o":
-			for n in str[2:] {
-				switch n {
-					case '0'..='7', '_': // OK
-					case: return false
-				}
+	case "0o":
+		for n in str[2:] {
+			switch n {
+			case '0' ..= '7', '_': // OK
+			case:
+				return false
 			}
+		}
 
-		case "0x":
-			for n in str[2:] {
-				switch n {
-					case '0'..='9', 'a'..='f', 'A'..='F', '_': // OK
-					case: return false
-				}
+	case "0x":
+		for n in str[2:] {
+			switch n {
+			case '0' ..= '9', 'a' ..= 'f', 'A' ..= 'F', '_': // OK
+			case:
+				return false
 			}
+		}
 
-		case: return is_valid_decimal(str[2:])
+	case:
+		return is_valid_decimal(str[2:])
 	}
 
 	return true
@@ -424,15 +448,18 @@ is_valid_string_literal :: proc(str: string) -> bool {
 
 			case 'u':
 				switch r {
-				case 0..=0xD7FF, 0xE000..=0x10FFFF:
+				case 0 ..= 0xD7FF, 0xE000 ..= 0x10FFFF:
 					continue
-				case: return false
+				case:
+					return false
 				}
 
-			case: return false
+			case:
+				return false
 			}
 		}
 	}
 
 	return true
 }
+

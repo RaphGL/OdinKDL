@@ -41,10 +41,14 @@ when KDL_DEBUG {
 		command here
 		`
 
+
 		tokenizer := make_tokenizer(input)
 
-		for token, err := get_token(&tokenizer); token.kind != .EOF; token, err = get_token(&tokenizer) {
+		for token, err := get_token(&tokenizer);
+		    token.kind != .EOF;
+		    token, err = get_token(&tokenizer) {
 			fmt.println(token, err)
 		}
 	}
 }
+
