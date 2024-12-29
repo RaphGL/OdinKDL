@@ -1,5 +1,7 @@
 package kdl
+import "core:fmt"
 
+import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
 
@@ -21,8 +23,11 @@ Token_Kind :: enum {
 	Close_Brace,
 	Hash,
 	Minus,
-	Quote,
 	Equal,
+	Quoted_String,
+	Raw_Quoted_String,
+	Multiline_String,
+	Raw_Multiline_String,
 }
 
 Pos :: struct {
@@ -47,7 +52,6 @@ Tokenizer :: struct {
 }
 
 make_tokenizer :: proc(data: string, spec := DEFAULT_SPECIFICATION) -> Tokenizer {
-	test: int = "string"
 	t := Tokenizer {
 		pos = {line = 1},
 		data = data,
@@ -185,9 +189,7 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 
 		case '\\':
 			for t.offset < len(t.data) {
-				if !is_whitespace(t.r) {
-					break
-				}
+				is_whitespace(t.r) or_break
 			}
 			return true
 
@@ -209,7 +211,6 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 		return
 	}
 
-	// TODO add multiline strings
 	// TODO add raw strings
 	// TODO add slashdash
 	block: switch curr_rune {
@@ -256,22 +257,67 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 		token.kind = new_token.kind
 
 	case '"':
-		token.kind = .Quote
-
-		for t.offset < len(t.data) {
-			r := t.r
-			if is_newline(r) || r < 0 {
-				err = .String_Not_Terminated
-				break
+		// multiline string
+		if t.r == '"' {
+			if next_rune(t) != '"' {
+				break block
 			}
+
+			next_rune(t)
+			is_newline(t.r) or_break block
 			next_rune(t)
 
-			if r == '"' {
+			token.pos = t.pos
+			before_endquote := t.pos
+
+			for t.offset < len(t.data) {
+				before_endquote = t.pos
+
+				if t.r == '\\' {
+					scan_escape(t)
+				}
+
+				#unroll for _ in 0 ..< 3 {
+					if t.r != '"' {
+						next_rune(t)
+						continue
+					}
+					next_rune(t)
+				}
+
 				break
 			}
 
-			if r == '\\' {
-				scan_escape(t)
+			if t.offset < len(t.data) {
+				token.kind = .Multiline_String
+				token.text = string(t.data[token.offset:before_endquote.offset])
+				token.text = normalize_newline(token.text)
+				token.text = dedent_multiline_string(token.text)
+
+				if !is_valid_multiline_string(token.text) {
+					token.kind = .Invalid
+				}
+
+				return
+			}
+		} else {
+			token.kind = .Quoted_String
+
+			for t.offset < len(t.data) {
+				r := t.r
+				if is_newline(r) || r < 0 {
+					err = .String_Not_Terminated
+					break
+				}
+				next_rune(t)
+
+				if r == '"' {
+					break
+				}
+
+				if r == '\\' {
+					scan_escape(t)
+				}
 			}
 		}
 
@@ -461,5 +507,35 @@ is_valid_string_literal :: proc(str: string) -> bool {
 	}
 
 	return true
+}
+
+is_valid_multiline_string :: proc(str: string) -> bool {
+	is_valid_string_literal(str) or_return
+
+	i := strings.last_index(str, "\\")
+	if i == -1 {
+		return true
+	}
+
+	i += 1
+	remain := str[i:]
+
+	for r in remain {
+		if !is_whitespace(r) && !is_newline(r) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// TODO
+dedent_multiline_string :: proc(str: string) -> string {
+	return str
+}
+
+// TODO
+normalize_newline :: proc(str: string) -> string {
+	return str
 }
 

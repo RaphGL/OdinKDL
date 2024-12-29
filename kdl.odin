@@ -39,6 +39,11 @@ when KDL_DEBUG {
 
 		command -> */ 
 		command here
+
+		multine """
+		some string here
+		hsldfjadf
+		"""
 		`
 
 
@@ -46,8 +51,8 @@ when KDL_DEBUG {
 
 		for token, err := get_token(&tokenizer);
 		    token.kind != .EOF;
-		    token, err = get_token(&tokenizer) {
-			fmt.println(token, err)
+		    token, _ = get_token(&tokenizer) {
+			fmt.println(token)
 		}
 	}
 }
