@@ -28,7 +28,7 @@ when KDL_DEBUG {
 		// here's a comment
 		true_true #true
 
-		hash_style #
+		test x=#true
 
 		multilinecom /* here's a comment */ --commentbeforehere #false
 
@@ -44,6 +44,8 @@ when KDL_DEBUG {
 		some string here
 		hsldfjadf
 		"""
+
+		some #"raw str"#
 		`
 
 
