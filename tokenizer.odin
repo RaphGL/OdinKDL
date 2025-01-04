@@ -17,6 +17,7 @@ Token_Kind :: enum {
 	Ident,
 	Newline,
 	Number,
+	Slash_Dash,
 	Open_Paren,
 	Close_Paren,
 	Open_Brace,
@@ -112,16 +113,6 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 
 	skip_whitespace :: proc(t: ^Tokenizer) {
 		loop: for t.offset < len(t.data) {
-			if t.r == '/' {
-				next_rune(t)
-				switch t.r {
-				case '*':
-					skip_multiline_comment(t)
-				case '/':
-					skip_inline_comment(t)
-				}
-			}
-
 			if is_newline(t.r) {
 				t.line += 1
 				t.curr_line_offset = t.offset
@@ -153,18 +144,6 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 			}
 
 			return
-		}
-	}
-
-	skip_line :: proc(t: ^Tokenizer) {
-		for t.offset < len(t.data) {
-			if is_newline(t.r) {
-				t.line += 1
-				t.curr_line_offset = t.offset
-				t.pos.column = 1
-				return
-			}
-			next_rune(t)
 		}
 	}
 
@@ -334,9 +313,17 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 		token.kind = .Equal
 
 	case '/':
-		if t.r == '/' {
-			skip_line(t)
+		switch t.r {
+		case '/':
+			skip_inline_comment(t)
+		case '*':
+			skip_multiline_comment(t)
+		case '-':
+			token.kind = .Slash_Dash
+			next_rune(t)
+			break block
 		}
+
 		token, err = get_token(t)
 
 	case '-':
