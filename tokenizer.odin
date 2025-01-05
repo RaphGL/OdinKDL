@@ -386,7 +386,7 @@ get_token :: proc(t: ^Tokenizer) -> (token: Token, err: Error) {
 			keyword := string(t.data[new_token.offset:t.offset])
 
 			// a keyword will always be invalid as an ident
-			if new_token.kind != .Invalid && !is_valid_ident(keyword) {
+			if new_token.kind != .Invalid && is_valid_ident(keyword) {
 				break block
 			}
 

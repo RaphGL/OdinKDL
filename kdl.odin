@@ -46,6 +46,8 @@ when KDL_DEBUG {
 		"""
 
 		/- some #"raw str"#
+
+		infm #-inf
 		`
 
 
